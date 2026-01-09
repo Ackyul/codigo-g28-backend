@@ -1,12 +1,11 @@
-a = int(input("Ingrese el valor de a: "))
-b = int(input("Ingrese el valor de b: "))
+a = float(input("Ingrese el valor de a: "))
+b = float(input("Ingrese el valor de b: "))
 
-suma = a + b
-resta = a - b
-multiplicacion = a * b
-division = a / b
+print(f"La suma de a y b es: {a + b}")
+print(f"La resta de a y b es: {a - b}")
+print(f"La multiplicacion de a y b es: {a * b}")
 
-print("La suma de a y b es: ", suma)
-print("La resta de a y b es: ", resta)
-print("La multiplicacion de a y b es: ", multiplicacion)
-print("La division de a y b es: ", division)
+if b != 0.0:
+ print(f"La division es: {a / b}")
+else:
+ print("No se puede dividir entre 0")

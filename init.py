@@ -14,3 +14,10 @@ print(nombre)
 print(edad, mensaje)
 print(es_mayor_edad)
 print(saldo)
+
+for i in range (10):
+    print(i)
+
+
+for j in range (5,11):
+    print(j)
