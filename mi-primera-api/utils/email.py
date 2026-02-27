@@ -71,7 +71,7 @@ def enviar_correo_verificacion(email, nombre, codigo):
         """
         params = {
             "from": current_app.config['EMAIL_FROM'],
-            "to": ["949237217yoshua@gmail.com"],
+            "to": ["linderhassingerwotdev@gmail.com"],
             "subject": f"Codigo de verificacion",
             "html": html_content
         }
@@ -91,8 +91,33 @@ def enviar_email_bienvenido(nombre):
         """
         params = {
             "from": current_app.config['EMAIL_FROM'],
-            "to": ["949237217yoshua@gmail.com"],
+            "to": ["linderhassingerwotdev@gmail.com"],
             "subject": "Welcome!",
+            "html": html_content
+        }
+
+        email_enviado = resend.Emails.send(params)
+        print(email_enviado)
+        return True
+    except Exception as e:
+        print(e)
+        return False
+
+def enviar_correo_recuperacion(nombre, codigo):
+    try:
+        resend.api_key = current_app.config['RESEND_API_KEY']
+
+        html_content = f"""
+          <div>
+            <h1>{nombre} - Código de Recuperación</h1>
+            <p>Código: {codigo}</p>
+          </div>
+        """
+
+        params = {
+            "from": current_app.config['EMAIL_FROM'],
+            "to": ['linderhassingerwotdev@gmail.com'],
+            "subject": "Recuperación de contraseña - TODO App",
             "html": html_content
         }
 
