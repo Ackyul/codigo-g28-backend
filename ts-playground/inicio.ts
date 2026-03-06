@@ -40,7 +40,11 @@ const persona2: Person = {
   edad: 88,
 };
 
-function calcularTotal(precio: number, cantidad: number, cliente: string) {
+function calcularTotal(
+  precio: number,
+  cantidad: number,
+  cliente: string,
+): string {
   const total = precio * cantidad;
   return `Cliente: ${cliente}\nTotal: ${total}`;
 }
@@ -56,5 +60,5 @@ type UserId = number;
 type StringOrNull = string | null;
 let userId1: UserId = 10;
 
-let texto: StringOrNull = null;
-texto = "hola mundo";
+let texto1: StringOrNull = null;
+texto1 = "hola mundo";
