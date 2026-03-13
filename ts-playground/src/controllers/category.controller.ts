@@ -1,37 +1,32 @@
 import type { Request, Response } from "express";
-import { ProductService } from "../services/product.service";
+import { CategoryService } from "../services/category.service";
 
-// instanciar ProductService
-const service = new ProductService();
+const service = new CategoryService();
 
-// req: request
-// res: response
-
-export class ProductController {
+export class CategoryController {
   // getAll
   async getAll(req: Request, res: Response) {
     try {
-      const products = await service.getAll();
-      res.json({ ok: true, data: products });
+      const categories = await service.getAll();
+      res.json({ ok: true, data: categories });
     } catch (error: any) {
       res.status(500).json({ ok: false, error: error.message });
     }
   }
 
-  // getByID
+  // getById
   async getById(req: Request, res: Response) {
     try {
-      // obtener el id de la url
       const id = Number(req.params.id);
-      const product = await service.getById(id);
+      const category = await service.getById(id);
 
-      if (!product) {
+      if (!category) {
         return res
           .status(404)
-          .json({ ok: false, message: "Producto no encontrado" });
+          .json({ ok: false, message: "Categoría no encontrada" });
       }
 
-      res.json({ ok: true, data: product });
+      res.json({ ok: true, data: category });
     } catch (error: any) {
       res.status(500).json({ ok: false, error: error.message });
     }
@@ -40,8 +35,8 @@ export class ProductController {
   // create
   async create(req: Request, res: Response) {
     try {
-      const product = await service.create(req.body);
-      res.status(201).json({ ok: true, data: product });
+      const category = await service.create(req.body);
+      res.status(201).json({ ok: true, data: category });
     } catch (error: any) {
       res.status(500).json({ ok: false, error: error.message });
     }
@@ -51,19 +46,19 @@ export class ProductController {
   async update(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const product = await service.update(id, req.body);
-      res.json({ ok: true, data: product });
+      const category = await service.update(id, req.body);
+      res.json({ ok: true, data: category });
     } catch (error: any) {
       res.status(500).json({ ok: false, error: error.message });
     }
   }
 
-  // delete
+  // destroy
   async destroy(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
       await service.destroy(id);
-      res.json({ ok: true, message: "Product eliminado" });
+      res.json({ ok: true, message: "Categoría eliminada" });
     } catch (error: any) {
       res.status(500).json({ ok: false, error: error.message });
     }
