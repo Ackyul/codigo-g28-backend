@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { Roles } from "../types";
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 
@@ -7,7 +8,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
-    rol: string;
+    rol: Roles;
   };
 }
 
@@ -37,4 +38,19 @@ export function authMiddleware(
   } catch (error) {
     return res.status(401).json({ ok: false, message: "Token expirado" });
   }
+}
+
+export function requiredRoles(...roles: Roles[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    const userRole = req.user?.rol;
+
+    if (!userRole || !roles.includes(userRole)) {
+      return res.status(403).json({
+        ok: false,
+        message: "No tienes permisos para esta acción.",
+      });
+    }
+
+    next();
+  };
 }

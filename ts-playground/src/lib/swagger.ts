@@ -299,6 +299,16 @@ const options: swaggerJsdoc.Options = {
             message: { type: "string", example: "Token expirado" },
           },
         },
+        ForbiddenResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: false },
+            message: {
+              type: "string",
+              example: "No tienes permisos para esta acción.",
+            },
+          },
+        },
 
         // ── Orders schemas ───────────────────────────────────────────────────
         OrderItem: {
@@ -327,6 +337,14 @@ const options: swaggerJsdoc.Options = {
               type: "string",
               format: "date-time",
               example: "2026-03-12T00:00:00.000Z",
+            },
+            deletedAt: {
+              type: "string",
+              format: "date-time",
+              nullable: true,
+              example: null,
+              description:
+                "Fecha de eliminación lógica. Si es null, la orden está activa.",
             },
             users: {
               type: "object",
@@ -418,6 +436,106 @@ const options: swaggerJsdoc.Options = {
             data: {
               type: "string",
               example: "Se require al menos 1 item para crear la orden.",
+            },
+          },
+        },
+
+        // ── Payments schemas ─────────────────────────────────────────────────
+        PaymentPreferenceInput: {
+          type: "object",
+          required: ["orderId"],
+          properties: {
+            orderId: { type: "integer", example: 1 },
+          },
+        },
+        PaymentPreferenceResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                preferenceId: { type: "string", example: "12345678-abcd-..." },
+                initPoint: {
+                  type: "string",
+                  example:
+                    "https://www.mercadopago.com.pe/checkout/v1/redirect?pref_id=...",
+                },
+                sandBoxInitPoint: {
+                  type: "string",
+                  example:
+                    "https://sandbox.mercadopago.com.pe/checkout/v1/redirect?pref_id=...",
+                },
+              },
+            },
+          },
+        },
+        PaymentWebhookResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                orderId: { type: "integer", example: 1 },
+                mpStatus: { type: "string", example: "approved" },
+                orderStatus: { type: "string", example: "COMPLETED" },
+              },
+            },
+          },
+        },
+        PaymentStatusResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                id: { type: "integer", example: 123456789 },
+                status: { type: "string", example: "approved" },
+                statusDetail: { type: "string", example: "accredited" },
+                externalReference: { type: "string", example: "1" },
+                amount: { type: "number", format: "float", example: 1299.99 },
+              },
+            },
+          },
+        },
+
+        // ── Stripe schemas ───────────────────────────────────────────────────
+        StripeCheckoutInput: {
+          type: "object",
+          required: ["orderId"],
+          properties: {
+            orderId: { type: "integer", example: 1 },
+          },
+        },
+        StripeCheckoutResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                sessionId: { type: "string", example: "cs_test_a1b2c3d4..." },
+                url: {
+                  type: "string",
+                  example: "https://checkout.stripe.com/pay/cs_test_a1b2c3d4...",
+                },
+              },
+            },
+          },
+        },
+        StripeWebhookResponse: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                orderId: { type: "integer", example: 1 },
+                stripeStatus: { type: "string", example: "paid" },
+                orderStatus: { type: "string", example: "COMPLETED" },
+              },
             },
           },
         },
@@ -931,7 +1049,7 @@ const options: swaggerJsdoc.Options = {
           summary: "Obtener todas las órdenes",
           tags: ["Orders"],
           description:
-            "Retorna la lista completa de órdenes ordenadas por fecha de creación (más reciente primero), incluyendo el usuario y los items con sus productos. **Requiere token JWT.**",
+            "Retorna órdenes activas (`deletedAt = null`) ordenadas por fecha (más reciente primero), incluyendo usuario e items con sus productos. **Comportamiento por rol:** `ADMIN` recibe todas las órdenes activas del sistema; `CUSTOMER` recibe únicamente sus propias órdenes. **Requiere token JWT.**",
           security: [{ BearerAuth: [] }],
           responses: {
             200: {
@@ -1024,7 +1142,7 @@ const options: swaggerJsdoc.Options = {
           summary: "Obtener una orden por ID",
           tags: ["Orders"],
           description:
-            "Retorna una orden específica con su usuario y los items con sus productos. **Requiere token JWT.**",
+            "Retorna una orden específica con su usuario e items. **Comportamiento por rol:** `ADMIN` puede consultar cualquier orden activa; `CUSTOMER` solo puede consultar sus propias órdenes (si intenta acceder a una orden ajena recibe 404). Las órdenes con `deletedAt` distinto de null no son accesibles. **Requiere token JWT.**",
           security: [{ BearerAuth: [] }],
           parameters: [
             {
@@ -1056,7 +1174,8 @@ const options: swaggerJsdoc.Options = {
               },
             },
             404: {
-              description: "Orden no encontrada",
+              description:
+                "Orden no encontrada, archivada, o el CUSTOMER no tiene acceso a ella",
               content: {
                 "application/json": {
                   schema: {
@@ -1076,10 +1195,10 @@ const options: swaggerJsdoc.Options = {
           },
         },
         delete: {
-          summary: "Eliminar una orden",
+          summary: "Archivar una orden (soft delete)",
           tags: ["Orders"],
           description:
-            "Elimina permanentemente una orden y todos sus items asociados. **Requiere token JWT.**",
+            "Realiza un **soft delete** de la orden: marca el campo `deletedAt` con la fecha actual sin eliminar el registro de la base de datos. La orden desaparece de los listados activos y solo es visible a través de `GET /api/orders/archived`. **Requiere token JWT y rol ADMIN.**",
           security: [{ BearerAuth: [] }],
           parameters: [
             {
@@ -1087,17 +1206,18 @@ const options: swaggerJsdoc.Options = {
               name: "id",
               required: true,
               schema: { type: "integer" },
-              description: "ID numérico de la orden a eliminar",
+              description: "ID numérico de la orden a archivar",
               example: 1,
             },
           ],
           responses: {
             200: {
-              description: "Orden eliminada exitosamente",
+              description:
+                "Orden archivada exitosamente (deletedAt actualizado)",
               content: {
                 "application/json": {
                   schema: {
-                    $ref: "#/components/schemas/OrderDeleteResponse",
+                    $ref: "#/components/schemas/OrderSuccessItemResponse",
                   },
                 },
               },
@@ -1110,8 +1230,17 @@ const options: swaggerJsdoc.Options = {
                 },
               },
             },
+            403: {
+              description: "Prohibido — se requiere rol ADMIN",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ForbiddenResponse" },
+                },
+              },
+            },
             500: {
-              description: "Error interno del servidor",
+              description:
+                "Error interno del servidor (ej. orden no encontrada)",
               content: {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -1127,7 +1256,7 @@ const options: swaggerJsdoc.Options = {
           summary: "Actualizar el estado de una orden",
           tags: ["Orders"],
           description:
-            "Actualiza el campo `status` de una orden existente. Los valores permitidos son `PENDING`, `COMPLETED` y `CANCELLED`. **Requiere token JWT.**",
+            "Actualiza el campo `status` de una orden existente. Los valores permitidos son `PENDING`, `COMPLETED` y `CANCELLED`. **Requiere token JWT y rol ADMIN.**",
           security: [{ BearerAuth: [] }],
           parameters: [
             {
@@ -1163,6 +1292,351 @@ const options: swaggerJsdoc.Options = {
               content: {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            403: {
+              description: "Prohibido — se requiere rol ADMIN",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ForbiddenResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      "/api/orders/{id}/cancel": {
+        patch: {
+          summary: "Cancelar una orden propia",
+          tags: ["Orders"],
+          description:
+            "Permite al usuario autenticado cancelar **su propia orden**, siempre que su estado actual sea `PENDING`. No requiere body. Si la orden no pertenece al usuario autenticado o ya no está en `PENDING`, el servidor responde con 500 y un mensaje descriptivo. **Requiere token JWT. Disponible para rol CUSTOMER y ADMIN.**",
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "id",
+              required: true,
+              schema: { type: "integer" },
+              description: "ID numérico de la orden a cancelar",
+              example: 1,
+            },
+          ],
+          responses: {
+            200: {
+              description: "Orden cancelada exitosamente (status = CANCELLED)",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/OrderSuccessItemResponse",
+                  },
+                },
+              },
+            },
+            401: {
+              description: "No autorizado — token ausente, inválido o expirado",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            500: {
+              description:
+                "Error interno — orden no encontrada, no pertenece al usuario, o su estado no es PENDING",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      "/api/orders/archived": {
+        get: {
+          summary: "Obtener órdenes archivadas",
+          tags: ["Orders"],
+          description:
+            "Retorna todas las órdenes que han sido eliminadas lógicamente (soft delete), es decir, cuyo campo `deletedAt` es distinto de `null`. Los resultados se ordenan por `deletedAt` descendente (más reciente primero). **Requiere token JWT y rol ADMIN.**",
+          security: [{ BearerAuth: [] }],
+          responses: {
+            200: {
+              description: "Lista de órdenes archivadas obtenida exitosamente",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/OrderSuccessListResponse",
+                  },
+                },
+              },
+            },
+            401: {
+              description: "No autorizado — token ausente, inválido o expirado",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            403: {
+              description: "Prohibido — se requiere rol ADMIN",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ForbiddenResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      // ── Payments ─────────────────────────────────────────────────────────
+      "/api/payments/preference": {
+        post: {
+          summary: "Crear preferencia de pago",
+          tags: ["Payments"],
+          description:
+            "Crea una nueva preferencia de pago de MercadoPago para una orden específica mediante su `orderId`. **Requiere token JWT.**",
+          security: [{ BearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/PaymentPreferenceInput" },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Preferencia creada exitosamente",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/PaymentPreferenceResponse",
+                  },
+                },
+              },
+            },
+            400: {
+              description: "Petición inválida (ej. orderId faltante)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+            401: {
+              description: "No autorizado — token ausente, inválido o expirado",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      "/api/payments/webhook": {
+        post: {
+          summary: "Webhook de MercadoPago",
+          tags: ["Payments"],
+          description:
+            "Endpoint donde MercadoPago notifica cambios de estado en un pago y actualiza el estado de la respectiva orden.",
+          responses: {
+            200: {
+              description:
+                "Webhook procesado exitosamente o ignorado si el tipo no es 'payment'",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/PaymentWebhookResponse",
+                  },
+                },
+              },
+            },
+            400: {
+              description: "Petición inválida (payment id faltante)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      "/api/payments/status/{paymentId}": {
+        get: {
+          summary: "Obtener estado de un pago",
+          tags: ["Payments"],
+          description:
+            "Consulta el estado actual de un pago directamente a MercadoPago mediante su `paymentId`. **Requiere token JWT.**",
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "paymentId",
+              required: true,
+              schema: { type: "string" },
+              description: "ID del pago proporcionado por MercadoPago",
+              example: "1234567890",
+            },
+          ],
+          responses: {
+            200: {
+              description: "Estado del pago obtenido exitosamente",
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: "#/components/schemas/PaymentStatusResponse",
+                  },
+                },
+              },
+            },
+            401: {
+              description: "No autorizado — token ausente, inválido o expirado",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      // ── Stripe ───────────────────────────────────────────────────────────
+      "/api/stripe/checkout": {
+        post: {
+          summary: "Crear una sesión de Checkout de Stripe",
+          tags: ["Stripe"],
+          description:
+            "Crea una sesión de pago en Stripe para una orden especificada y devuelve la URL de pago. **Requiere token JWT.**",
+          security: [{ BearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/StripeCheckoutInput" },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Sesión de Checkout creada exitosamente",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/StripeCheckoutResponse" },
+                },
+              },
+            },
+            400: {
+              description:
+                "Petición inválida (ej. orderId faltante o la orden no pertenece al usuario)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+            401: {
+              description: "No autorizado — token ausente, inválido o expirado",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/UnauthorizedResponse" },
+                },
+              },
+            },
+            500: {
+              description: "Error interno del servidor",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      "/api/stripe/webhook": {
+        post: {
+          summary: "Webhook de Stripe",
+          tags: ["Stripe"],
+          description:
+            "Endpoint donde Stripe notifica eventos de pagos (como checkout.session.completed) y actualiza el estado de la orden correspondiente.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { type: "object" },
+                description:
+                  "Cuerpo de la petición (JSON crudo o raw) enviado por Stripe",
+              },
+            },
+          },
+          responses: {
+            200: {
+              description:
+                "Webhook procesado exitosamente o ignorado si el tipo no es 'checkout.session.completed'",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/StripeWebhookResponse" },
+                },
+              },
+            },
+            400: {
+              description:
+                "Petición inválida (ej. falta la firma o la firma es inválida)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorResponse" },
                 },
               },
             },
